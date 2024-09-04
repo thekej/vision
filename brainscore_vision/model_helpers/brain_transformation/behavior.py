@@ -449,7 +449,7 @@ class VideoReadoutMapping(BrainModel):
             self.lr = 1e-4
             self.val_after = 5
             self.best_val_accuracy = 0
-            self.convergence_thresh = 50
+            self.convergence_thresh = 1000
             self.counter_converge = 0
             self.prob_threshold = 0.5
             if torch.cuda.is_available():
