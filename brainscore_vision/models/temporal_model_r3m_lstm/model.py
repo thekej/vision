@@ -56,8 +56,6 @@ def get_model(identifier, num_frames=7):
             },
             "duration": None,
             "time_alignment": "evenly_spaced",
-            "convert_img_to_video":True,
-            "img_duration":450
         }
         
         def process_activation(layer, layer_name, inputs, output):
@@ -71,8 +69,6 @@ def get_model(identifier, num_frames=7):
             },
             "duration": None,
             "time_alignment": "evenly_spaced",
-            "convert_img_to_video":True,
-            "img_duration":450
         }
         
         def process_activation(layer, layer_name, inputs, output):
@@ -86,8 +82,6 @@ def get_model(identifier, num_frames=7):
             },
             "duration": None,
             "time_alignment": "evenly_spaced",
-            "convert_img_to_video":True,
-            "img_duration":450
         }
         
         def process_activation(layer, layer_name, inputs, output):

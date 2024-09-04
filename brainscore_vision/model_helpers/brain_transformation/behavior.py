@@ -394,7 +394,7 @@ class VideoReadoutMapping(BrainModel):
                             fitting_stimuli['contacts'].values)
 
     def look_at(self, stimuli, number_of_trials=1, require_variance=False, simulation=False):
-        if not simulation:    
+        if not simulation:
             features = self.activations_model(stimuli, layers=self.readout)
             prediction = self.classifier.predict(features)
             return prediction
@@ -447,9 +447,9 @@ class VideoReadoutMapping(BrainModel):
             self.num_classes = num_classes
             self.num_epochs = 1000
             self.lr = 1e-4
-            self.val_after = 1
+            self.val_after = 5
             self.best_val_accuracy = 0
-            self.convergence_thresh = 20
+            self.convergence_thresh = 50
             self.counter_converge = 0
             self.prob_threshold = 0.5
             if torch.cuda.is_available():
@@ -486,24 +486,24 @@ class VideoReadoutMapping(BrainModel):
     
                     train_loader = VideoReadoutMapping.MultiEpochsDataLoader(train_dataset, 
                                                  batch_sampler=sampler, 
-                                                 num_workers=4)
+                                                 num_workers=1)
                 else:
                     train_loader = VideoReadoutMapping.MultiEpochsDataLoader(train_dataset, 
                                                batch_size=128, 
                                                shuffle=True, 
-                                               num_workers=4)
+                                               num_workers=1)
             
                 val_dataset = VideoReadoutMapping.TransformerLoader(features, labels, indices=val_indices,
                                                                    num_classes=self.num_classes)
                 val_loader = VideoReadoutMapping.MultiEpochsDataLoader(val_dataset, 
                                                batch_size=128, 
                                                shuffle=False, 
-                                               num_workers=4)
+                                               num_workers=1)
             else:
                 train_dataset = VideoReadoutMapping.TransformerLoader(features, None, num_classes=self.num_classes)
                 train_loader = VideoReadoutMapping.MultiEpochsDataLoader(train_dataset,
                                                  batch_size=128, shuffle=False, 
-                                                 num_workers=4)
+                                                 num_workers=1)
                 val_loader = None
             return train_loader, val_loader
             
@@ -511,7 +511,8 @@ class VideoReadoutMapping(BrainModel):
             train_loader, val_loader = self.build_loader(features, labels, mode='train')
             if self.device == torch.device("cuda"):
                 self.model = nn.DataParallel(self.model)
-            self.model = self.model.to(self.device)
+                self.model = self.model.to(self.device)
+
             # Optimizer
             optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr)
             criterion = nn.BCELoss()
@@ -561,11 +562,13 @@ class VideoReadoutMapping(BrainModel):
             
         def train(self, data_loader, optimizer, criterion, 
                   epoch, scheduler, warmup_scheduler,
-                  warmup_steps, log_step=1):
+                  warmup_steps, log_step=10):
+            from tqdm import tqdm
             self.model.train()
             total_loss = 0
             total_acc = 0
 
+            pbar = tqdm(total=len(data_loader), desc=f'Epoch {epoch+1}', position=0, leave=True)
             for batch_idx, data in enumerate(data_loader):
                 # Warmup for the initial warmup_steps
                 if epoch * len(data_loader) + batch_idx < warmup_steps:
@@ -586,14 +589,18 @@ class VideoReadoutMapping(BrainModel):
                     loss = criterion(outputs, targets.long())
                 acc = self.binary_accuracy(outputs, targets)
 
-                if batch_idx % log_step == 0:
-                    print(f'Epoch:{epoch+1}, Step: [{batch_idx}/{len(data_loader)}], Train Accuracy:{acc:.5f}')
+                #if batch_idx % log_step == 0:
+                #    print(f'Epoch:{epoch+1}, Step: [{batch_idx}/{len(data_loader)}], Train Accuracy:{acc:.5f}')
 
                 loss.backward()
                 optimizer.step()
 
                 total_loss += loss.item()
                 total_acc += acc.item()
+                
+                # Update progress bar with dynamic postfix showing loss and accuracy
+                pbar.set_postfix({'Loss': f'{total_loss / (batch_idx+1):.5f}', 'Train Accuracy': f'{total_acc / (batch_idx+1):.5f}'})
+                pbar.update(1)
 
             # Calculate the average loss and accuracy over all batches
             avg_loss = total_loss / len(data_loader)
@@ -646,7 +653,7 @@ class VideoReadoutMapping(BrainModel):
             scenario = [next((sc for sc in all_scenarios if sc in filename), 'unknown') 
                         for filename in features['stimulus_id'].data]
             map_ = {'collision': 'Collide', 'contain': 'Contain', 'link': 'Link', 'towers': 'Support',
-                     'domino': 'Dominoes', 'drop': 'Drop', 'roll': 'Roll'}
+                     'dominoes': 'Dominoes', 'drop': 'Drop', 'roll': 'Roll'}
             proba = BehavioralAssembly(proba,
                                        coords=
                                        {'stimulus_id': ('presentation', features['stimulus_id'].data),
@@ -679,7 +686,7 @@ class VideoReadoutMapping(BrainModel):
             
     class ReadoutModel(nn.Module):
         def __init__(self, model_dim, num_heads, 
-                     num_encoder_layers, embed_dim=256, num_classes=1, num_input_layers=2):
+                     num_encoder_layers, embed_dim=252, num_classes=1, num_input_layers=2):
             super(VideoReadoutMapping.ReadoutModel, self).__init__()
             self.num_classes = num_classes
             self.model_dim = model_dim
@@ -689,21 +696,24 @@ class VideoReadoutMapping(BrainModel):
                     nn.ReLU(),
                     nn.Linear(embed_dim, embed_dim),
             )
-            self.encoder_layer = nn.TransformerEncoderLayer(d_model=self.embed_dim, nhead=num_heads, dim_feedforward=128)
-            self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_encoder_layers)
-            self.position_encoder = VideoReadoutMapping.PositionalEncoding(embed_dim)
-            self.fc = nn.Linear(embed_dim, num_classes)
-
+            #self.encoder_layer = nn.TransformerEncoderLayer(d_model=self.embed_dim, nhead=num_heads, dim_feedforward=128)
+            #self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_encoder_layers)
+            #self.position_encoder = VideoReadoutMapping.PositionalEncoding(embed_dim)
+            #self.fc = nn.Linear(embed_dim, num_classes)
+            from jepa.src.models.attentive_pooler import AttentiveClassifier
+            self.attentive_pooler = AttentiveClassifier(embed_dim=self.embed_dim, num_classes=num_classes)
+        
         def forward(self, x, mode=None):
             x = x.float()
             x = x.view(x.shape[0], x.shape[1], -1)  # Flatten keeping the last dimension
             N, T, D = x.shape
             x = self.linear_layer(x.flatten(0,1))
             x = x.view(N, T, self.embed_dim)
-            x = self.position_encoder(x)
-            x = self.transformer_encoder(x)
-            x = x.mean(dim=1)  # Pooling, consider masking padded values
-            x = self.fc(x)
+            #x = self.position_encoder(x)
+            #x = self.transformer_encoder(x)
+            #x = x.mean(dim=1)  # Pooling, consider masking padded values
+            #x = self.fc(x)
+            x = self.attentive_pooler(x)
             if self.num_classes == 1:
                 return torch.sigmoid(x), None
             else:

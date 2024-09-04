@@ -131,7 +131,7 @@ class FrozenPretrainedEncoder(nn.Module):
         # x is (Bs, T, 3, H, W)
         assert len(x.shape) == 5 and x.shape[1] >= self.n_past
         
-        observed_rollout_steps = x[:, self.n_past :].shape[1]
+        observed_rollout_steps = max(1, x[:, self.n_past :].shape[1])
         encoder_output = self.encoder(x, self.n_past)
         dynamics_output = self.dynamics(encoder_output, 
                                         observed_rollout_steps, 
